@@ -1,0 +1,70 @@
+{
+  "monsters": {
+    "slime_girl": {
+      "name": "Slime Girl",
+      "element": "Water",
+      "base_hp": 20,
+      "base_atk": 8,
+      "base_def": 6,
+      "base_spd": 7,
+      "catch_rate": 190,
+      "icon": "assets/monsters/slime_girl.png",
+      "learnset": [
+        {
+          "name": "Splash Kiss",
+          "power": 30,
+          "accuracy": 0.95
+        },
+        {
+          "name": "Ooze Slam",
+          "power": 40,
+          "accuracy": 0.9
+        }
+      ]
+    },
+    "harpy": {
+      "name": "Harpy",
+      "element": "Air",
+      "base_hp": 22,
+      "base_atk": 9,
+      "base_def": 6,
+      "base_spd": 12,
+      "catch_rate": 160,
+      "icon": "assets/monsters/harpy.png",
+      "learnset": [
+        {
+          "name": "Gust Peck",
+          "power": 35,
+          "accuracy": 0.95
+        },
+        {
+          "name": "Sky Rake",
+          "power": 45,
+          "accuracy": 0.88
+        }
+      ]
+    },
+    "minotaur": {
+      "name": "Minotaur",
+      "element": "Earth",
+      "base_hp": 28,
+      "base_atk": 12,
+      "base_def": 10,
+      "base_spd": 6,
+      "catch_rate": 120,
+      "icon": "assets/monsters/minotaur.png",
+      "learnset": [
+        {
+          "name": "Horn Bash",
+          "power": 40,
+          "accuracy": 0.95
+        },
+        {
+          "name": "Labyrinth Rush",
+          "power": 50,
+          "accuracy": 0.85
+        }
+      ]
+    }
+  }
+}
