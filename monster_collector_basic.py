@@ -190,10 +190,14 @@ def type_multiplier(attacker: Monster, defender: Monster) -> float:
 
 
 def calc_damage(attacker: Monster, defender: Monster, move: Move) -> Tuple[int, str]:
+    """Level-scaled, gentler damage to avoid one-hit KOs.
+    base = (((0.4 * level + 2) * move.power * (atk / max(1, defense))) / 10) * type * variance(0.9..1.1)
+    """
     import random as _r
     if _r.random() > move.accuracy:
         return 0, f"{attacker.spec.name}'s {move.name} missed!"
-    base = max(1, move.power + attacker.atk - defender.defense)
+    base = ((0.4 * attacker.level + 2) * move.power * (attacker.atk / max(1, defender.defense))) / 10
+    base = max(1.0, base)
     mult = type_multiplier(attacker, defender)
     variance = _r.uniform(0.85, 1.0)
     dmg = int(base * mult * variance)
@@ -557,6 +561,57 @@ class BattleWindow(tk.Toplevel):
             self.refresh(); self.after(50, self.check_outcome)
 
 # ------------------ Dialogs ------------------
+
+class ShopDialog(tk.Toplevel):
+    def __init__(self, master: "GameApp", player: "Player"):
+        super().__init__(master)
+        self.title("Charm Shop")
+        self.resizable(False, False)
+        self.player = player
+        self.master_app = master  # keep reference to GameApp for sidebar refresh
+
+        self.PRICES = {
+            "Charm Orb": 50,
+            "Potion": 40,
+        }
+
+        frm = tk.Frame(self)
+        frm.pack(padx=12, pady=12)
+
+        # Header
+        self.money_var = tk.StringVar()
+        tk.Label(frm, textvariable=self.money_var, font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
+
+        # Items for sale
+        tk.Label(frm, text="Items for sale:").pack(anchor="w", pady=(8, 4))
+        for item_name, price in self.PRICES.items():
+            ttk.Button(
+                frm,
+                text=f"Buy {item_name} ({price})",
+                command=lambda n=item_name, p=price: self.buy_item(n, p)
+            ).pack(fill="x", pady=2)
+
+        ttk.Separator(frm, orient="horizontal").pack(fill="x", pady=8)
+        ttk.Button(frm, text="Close", command=self.destroy).pack(fill="x")
+
+        self.refresh_money()
+
+    def refresh_money(self):
+        self.money_var.set(f"Coins: {self.player.money}  |  Bag: " +
+                           ", ".join(f"{k}x{v}" for k, v in self.player.bag.items()) if self.player.bag else "Coins: {self.player.money}")
+
+    def buy_item(self, name: str, price: int):
+        if self.player.money < price:
+            messagebox.showinfo("Shop", "Not enough coins.")
+            return
+        # Update money and bag
+        self.player.money -= price
+        self.player.bag[name] = self.player.bag.get(name, 0) + 1
+
+        # Reflect changes in UI
+        self.refresh_money()
+        self.master_app.update_sidebar()
+        messagebox.showinfo("Shop", f"Purchased 1x {name}!")
 
 class BagDialog(tk.Toplevel):
     def __init__(self, master, player: 'Player'):
