@@ -21,15 +21,15 @@ from typing import Dict, List, Optional, Tuple
 
 WORLD_MAP = [
     "########################",
-    "#......TT....####.....H#",
-    "#..####..##..#..#..TT..#",
-    "#..#  #..#...#..#..##..#",
-    "#..#  #..####..#.......#",
-    "#..#  #........#..TT...#",
-    "#..####..TTTT..##..###..#",
-    "#.............C.....#..##",
-    "#..TT..######..TT..#..TT#",
-    "#......#....#......#....#",
+    "#H....TT..####..TT....##",
+    "#..####..##.....#..TT..#",
+    "#..#  #..#C.##..#..##..#",
+    "#..#  #..####..#..###..#",
+    "#..#  #..TT....#..#....#",
+    "#..####..TTTT..##..###.#",
+    "#..T..####..TT..#..T...#",
+    "#..TT..#..#..TT..#..TT.#",
+    "#......#....#......#...E#",
     "########################",
 ]
 
@@ -294,6 +294,9 @@ class GameApp(tk.Tk):
                 elif ch == 'C':
                     c.create_rectangle(x0, y0, x1, y1, fill="#6d4c41", outline="#4e382f")
                     c.create_text((x0+x1)//2, (y0+y1)//2, text='C', fill='white')
+                elif ch == 'E':
+                    c.create_rectangle(x0, y0, x1, y1, fill="#8e44ad", outline="#6c3483")
+                    c.create_text((x0+x1)//2, (y0+y1)//2, text='E', fill='white')
                 else:
                     c.create_rectangle(x0, y0, x1, y1, fill="#2b2b2b", outline="#222")
         px, py = self.player.x, self.player.y
@@ -362,7 +365,7 @@ class GameApp(tk.Tk):
     def random_wild(self) -> Monster:
         key = random.choice(list(self.specs.keys()))
         spec = self.specs[key]
-        lvl = random.randint(2, 6)
+        lvl = random.randint(2, 4)
         return Monster(spec=spec, level=lvl)
 
     def heal_party(self):
