@@ -386,6 +386,7 @@ class BattleWindow(tk.Toplevel):
         self.player = player
         self.title("Battle")
         self.resizable(False, False)
+        self.geometry("800x600")  # Larger window size
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.transient(app)
         self.grab_set()
@@ -396,54 +397,56 @@ class BattleWindow(tk.Toplevel):
 
         # Layout: Pokémon-style
         main = tk.Frame(self, bg="#1b1b1b")
-        main.pack(padx=10, pady=10)
+        main.pack(padx=20, pady=20, fill="both", expand=True)
         main.grid_columnconfigure(0, weight=1)
         main.grid_columnconfigure(1, weight=1)
 
         # Foe stats (top-left)
         self.foe_var = tk.StringVar()
-        foe_box = tk.Frame(main, bg="#263238", bd=1, relief="ridge")
-        foe_box.grid(row=0, column=0, sticky="nw", padx=6, pady=6)
-        tk.Label(foe_box, textvariable=self.foe_var, fg="white", bg="#263238", justify="left", padx=8, pady=6).pack()
+        foe_box = tk.Frame(main, bg="#263238", bd=2, relief="ridge")
+        foe_box.grid(row=0, column=0, sticky="nw", padx=12, pady=12)
+        tk.Label(foe_box, textvariable=self.foe_var, fg="white", bg="#263238", 
+                 justify="left", padx=12, pady=10, font=("TkDefaultFont", 12, "bold")).pack()
 
         # Foe icon (top-right)
         self.foe_img_label = tk.Label(main, bg="#1b1b1b")
-        self.foe_img_label.grid(row=0, column=1, sticky="ne", padx=6, pady=6)
+        self.foe_img_label.grid(row=0, column=1, sticky="ne", padx=12, pady=12)
 
         # Player stats (bottom-left)
         self.you_var = tk.StringVar()
-        you_box = tk.Frame(main, bg="#263238", bd=1, relief="ridge")
-        you_box.grid(row=1, column=0, sticky="sw", padx=6, pady=6)
-        tk.Label(you_box, textvariable=self.you_var, fg="white", bg="#263238", justify="left", padx=8, pady=6).pack()
+        you_box = tk.Frame(main, bg="#263238", bd=2, relief="ridge")
+        you_box.grid(row=1, column=0, sticky="sw", padx=12, pady=12)
+        tk.Label(you_box, textvariable=self.you_var, fg="white", bg="#263238", 
+                 justify="left", padx=12, pady=10, font=("TkDefaultFont", 12, "bold")).pack()
 
         # Right column: player icon + commands
         right_col = tk.Frame(main, bg="#1b1b1b")
-        right_col.grid(row=1, column=1, sticky="se", padx=6, pady=6)
+        right_col.grid(row=1, column=1, sticky="se", padx=12, pady=12)
         self.you_img_label = tk.Label(right_col, bg="#1b1b1b")
-        self.you_img_label.pack(anchor="e", pady=(0,8))
+        self.you_img_label.pack(anchor="e", pady=(0,12))
 
         # Message box full-width
         self.msg_var = tk.StringVar(value=f"A wild {wild.spec.name} Lv{wild.level} appeared!")
         msg_box = tk.Frame(self, bg="#111")
-        msg_box.pack(fill="x", padx=10)
-        tk.Label(msg_box, textvariable=self.msg_var, fg="white", bg="#111", anchor="w", justify="left", padx=8, pady=6).pack(fill="x")
+        msg_box.pack(fill="x", padx=20, pady=(0,10))
+        tk.Label(msg_box, textvariable=self.msg_var, fg="white", bg="#111", anchor="w", 
+                 justify="left", padx=12, pady=8, font=("TkDefaultFont", 11)).pack(fill="x")
 
         # Commands (lower-right)
         cmd_box = tk.Frame(right_col)
-        cmd_box.pack(anchor="e")
-        self.btn_move1 = ttk.Button(cmd_box, text="Move1", command=lambda: self.turn(1))
-        self.btn_move2 = ttk.Button(cmd_box, text="Move2", command=lambda: self.turn(2))
-        self.btn_bag  = ttk.Button(cmd_box, text="Bag",   command=self.use_bag)
-        self.btn_run  = ttk.Button(cmd_box, text="Run",   command=self.try_run)
+        cmd_box.pack(anchor="e", pady=10)
+        self.btn_move1 = ttk.Button(cmd_box, text="Move1", command=lambda: self.turn(1), width=18)
+        self.btn_move2 = ttk.Button(cmd_box, text="Move2", command=lambda: self.turn(2), width=18)
+        self.btn_bag  = ttk.Button(cmd_box, text="Bag",   command=self.use_bag, width=18)
+        self.btn_run  = ttk.Button(cmd_box, text="Run",   command=self.try_run, width=18)
         for b in (self.btn_move1, self.btn_move2, self.btn_bag, self.btn_run):
-            b.pack(fill="x", pady=2)
+            b.pack(fill="x", pady=4)
 
         # Load icons
-        self.set_icon(self.foe_img_label, self.en.mon, maxd=128)
-        self.set_icon(self.you_img_label, self.pl.mon, maxd=128)
+        self.set_icon(self.foe_img_label, self.en.mon, maxd=160)
+        self.set_icon(self.you_img_label, self.pl.mon, maxd=160)
 
         self.refresh()
-
     def on_close(self):
         # Prevent closing mid-battle via window X
         pass
