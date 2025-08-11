@@ -121,6 +121,13 @@ ELEMENT_EFFECTIVENESS = {
     ("Air", "Water"): 1.5,
 }
 
+ELEMENT_COLORS = {
+    "Water": "#4aa1ff",
+    "Fire":  "#ff6b57",
+    "Earth": "#a0723a",
+    "Air":   "#87d37c",
+}
+
 # ------------- Tile Icons Manager ----------
 
 class TileIconManager:
@@ -834,8 +841,15 @@ class BattleWindow(tk.Toplevel):
                 return
             if attempt_capture(self.en.mon, ball_bonus=1.2):
                 messagebox.showinfo("Capture", f"Gotcha! {self.en.mon.spec.name} was captured!")
-                self.player.party.append(self.en.mon)
-                self.end(); return
+                if self.player.add_to_party(self.en.mon):
+                    messagebox.showinfo("Capture", f"Gotcha! {self.en.mon.spec.name} was captured and added to your party!")
+                    self.end()
+                    return
+                else:
+                    messagebox.showinfo("Capture", f"Your party is full (6). {self.en.mon.spec.name} fled!")
+                    # End the encounter like a normal wild defeat
+                    self.end()
+                    return
             else:
                 self.msg_var.set(f"The wild {self.en.mon.spec.name} broke free!")
                 mv = random.choice(self.en.mon.moves)
@@ -1006,49 +1020,181 @@ class BagUseDialog(tk.Toplevel):
         self.destroy(); self.on_use(False, False)
 
 class PartyDialog(tk.Toplevel):
-    def __init__(self, master, player: 'Player'):
+    """Party screen with 6 left-side slots. Each slot shows icon, name, HP, EXP."""
+    def __init__(self, master, player: "Player"):
         super().__init__(master)
         self.title("Party")
         self.resizable(False, False)
         self.player = player
-        self.list = tk.Listbox(self, width=28)
-        self.list.pack(side="left", fill="both", expand=True, padx=(8,0), pady=8)
-        btns = tk.Frame(self); btns.pack(side="right", fill="y", padx=8, pady=8)
-        ttk.Button(btns, text="View Icon", command=self.view_icon).pack(fill="x", pady=2)
-        ttk.Button(btns, text="Make Lead", command=self.make_lead).pack(fill="x", pady=2)
-        ttk.Button(btns, text="Release", command=self.release).pack(fill="x", pady=2)
-        ttk.Button(btns, text="Close", command=self.destroy).pack(fill="x", pady=(8,2))
+        # When opened from Sidebar, master is Sidebar; we’ll call master.update_sidebar()
+        # Make sure Sidebar has a passthrough method:
+        #   def update_sidebar(self): self.master.update_sidebar()
+
+        self.selected = 0   # index 0..5
+        self._img_cache = [None] * 6  # keep PhotoImage refs alive
+        self._init_party_styles()
+
+        root = tk.Frame(self)
+        root.pack(padx=10, pady=10)
+
+        # Left: 6 slots in a single column
+        self.slots_frame = tk.Frame(root)
+        self.slots_frame.grid(row=0, column=0, sticky="ns")
+        self.slot_frames: List[tk.Frame] = []
+
+        for i in range(6):
+            f = tk.Frame(self.slots_frame, bd=2, relief="ridge", padx=6, pady=6)
+            f.grid(row=i, column=0, sticky="ew", pady=4)
+            f.bind("<Button-1>", lambda e, idx=i: self.select(idx))
+            self.slot_frames.append(f)
+
+        # Right: actions
+        right = tk.Frame(root)
+        right.grid(row=0, column=1, sticky="n", padx=(12, 0))
+
+        self.btn_make_lead = ttk.Button(right, text="Make Lead", command=self.make_lead, width=18)
+        self.btn_view_icon = ttk.Button(right, text="View Icon", command=self.view_icon, width=18)
+        self.btn_release   = ttk.Button(right, text="Release",   command=self.release,   width=18)
+        self.btn_close     = ttk.Button(right, text="Close",     command=self.destroy,   width=18)
+        self.btn_make_lead.pack(fill="x", pady=2)
+        self.btn_view_icon.pack(fill="x", pady=2)
+        self.btn_release.pack(fill="x", pady=8)
+        self.btn_close.pack(fill="x")
+
         self.refresh()
 
-    def refresh(self):
-        self.list.delete(0, tk.END)
-        for m in self.player.party:
-            self.list.insert(tk.END, f"{m.spec.name} Lv{m.level} ({m.spec.element})")
+    def _init_party_styles(self):
+        # Create ttk styles for HP/EXP bars and labels
+        style = ttk.Style(self)
+        # Name label
+        style.configure("PartyName.TLabel", font=("TkDefaultFont", 11, "bold"))
+        style.configure("PartySub.TLabel",  font=("TkDefaultFont", 9))
+        style.configure("PartySubDim.TLabel", foreground="#7a8aa0", font=("TkDefaultFont", 9))
 
-    def selected(self) -> Optional[int]:
-        sel = self.list.curselection()
-        return sel[0] if sel else None
+        # HP bar (green) and EXP bar (blue)
+        style.layout("HP.Horizontal.TProgressbar", style.layout("Horizontal.TProgressbar"))
+        style.layout("EXP.Horizontal.TProgressbar", style.layout("Horizontal.TProgressbar"))
+
+        style.configure("HP.Horizontal.TProgressbar",  troughcolor="#29323d", background="#45c36f")
+        style.configure("EXP.Horizontal.TProgressbar", troughcolor="#29323d", background="#4aa1ff")
+
+    def select(self, idx: int):
+        self.selected = idx
+        self.refresh()
+
+    def _load_icon(self, mon: "Monster", maxd: int = 48):
+        if not mon or not mon.spec.icon or not os.path.exists(mon.spec.icon):
+            return None
+        try:
+            raw = tk.PhotoImage(file=mon.spec.icon)
+            w, h = raw.width(), raw.height()
+            ss = max(1, max(w // maxd, h // maxd))
+            return raw.subsample(ss, ss) if ss > 1 else raw
+        except Exception:
+            return None
+
+    def refresh(self):
+        # Rebuild each slot
+        for i, f in enumerate(self.slot_frames):
+            for w in f.winfo_children():
+                w.destroy()
+
+            mon = self.player.party[i] if i < len(self.player.party) else None
+
+            # Highlight selected slot
+            is_sel = (i == self.selected)
+            f.configure(bg=("#242a33" if is_sel else self.cget("bg")))
+            inner = tk.Frame(f, bg=("#242a33" if is_sel else f.cget("bg")))
+            inner.pack(fill="x")
+
+            # Icon
+            img = self._load_icon(mon) if mon else None
+            self._img_cache[i] = img  # keep ref
+            icon_lbl = tk.Label(inner, image=img, text=("Empty" if not mon else ""),
+                                width=54, bg=inner.cget("bg"), fg="#bbb", compound="center")
+            icon_lbl.grid(row=0, column=0, rowspan=3, sticky="w", padx=(0, 8))
+            icon_lbl.bind("<Button-1>", lambda e, idx=i: self.select(idx))
+
+            # Data area (name/level, HP, EXP)
+            if mon:
+                # Name / Level line
+                name = f"{mon.spec.name}   Lv{mon.level}"
+                name_fg = ELEMENT_COLORS.get(getattr(mon.spec, "element", ""), None)
+                lbl = ttk.Label(inner, text=name, style="PartyName.TLabel")
+                lbl.grid(row=0, column=1, sticky="w")
+                if name_fg:
+                    # ttk labels don’t accept 'foreground' via grid, set option directly
+                    try:
+                        lbl.configure(foreground=name_fg)
+                    except tk.TclError:
+                        pass
+
+                # HP — we show max out of battle (you can wire current HP if you track it)
+                cur_hp = mon.max_hp
+                max_hp = mon.max_hp
+                hp_pct = int((cur_hp / max_hp) * 100) if max_hp > 0 else 0
+
+                hp_row = tk.Frame(inner, bg=inner.cget("bg"))
+                hp_row.grid(row=1, column=1, sticky="we", pady=(2, 0))
+                ttk.Label(hp_row, text=f"HP: {cur_hp}/{max_hp}", style="PartySub.TLabel").pack(anchor="w")
+                hp_bar = ttk.Progressbar(hp_row, style="HP.Horizontal.TProgressbar",
+                                        orient="horizontal", length=160, mode="determinate", maximum=100, value=hp_pct)
+                hp_bar.pack(anchor="w")
+
+                # EXP
+                exp_now = mon.exp
+                exp_next = mon.exp_to_next()
+                exp_pct = int((exp_now / exp_next) * 100) if exp_next > 0 else 0
+
+                exp_row = tk.Frame(inner, bg=inner.cget("bg"))
+                exp_row.grid(row=2, column=1, sticky="we", pady=(2, 0))
+                ttk.Label(exp_row, text=f"EXP: {exp_now}/{exp_next}", style="PartySubDim.TLabel").pack(anchor="w")
+                exp_bar = ttk.Progressbar(exp_row, style="EXP.Horizontal.TProgressbar",
+                                        orient="horizontal", length=160, mode="determinate", maximum=100, value=exp_pct)
+                exp_bar.pack(anchor="w")
+
+            else:
+                # Empty slot styling
+                ttk.Label(inner, text="— empty —", style="PartySubDim.TLabel").grid(row=0, column=1, sticky="w")
+                ttk.Label(inner, text="HP: —", style="PartySubDim.TLabel").grid(row=1, column=1, sticky="w")
+                ttk.Label(inner, text="EXP: —", style="PartySubDim.TLabel").grid(row=2, column=1, sticky="w")
+
+        # Disable actions if empty selection or empty slot
+        have_mon = self.selected < len(self.player.party)
+        self.btn_make_lead.configure(state=("normal" if have_mon and self.selected != 0 else "disabled"))
+        self.btn_view_icon.configure(state=("normal" if have_mon else "disabled"))
+        self.btn_release.configure(state=("normal" if have_mon else "disabled"))
+
+    def selected_index(self) -> Optional[int]:
+        return self.selected if self.selected < len(self.player.party) else None
 
     def view_icon(self):
-        idx = self.selected()
+        idx = self.selected_index()
         if idx is None: return
         m = self.player.party[idx]
         IconViewer(self, m)
 
     def make_lead(self):
-        idx = self.selected()
+        idx = self.selected_index()
         if idx is None or idx == 0: return
         self.player.party[0], self.player.party[idx] = self.player.party[idx], self.player.party[0]
         self.refresh()
-        self.master.update_sidebar()
+        # If opened from Sidebar, master is Sidebar → forward to GameApp
+        if hasattr(self.master, "update_sidebar"):
+            self.master.update_sidebar()
 
     def release(self):
-        idx = self.selected()
+        idx = self.selected_index()
         if idx is None: return
         m = self.player.party.pop(idx)
         messagebox.showinfo("Release", f"Released {m.spec.name}.")
+        # Keep selection in range
+        if self.selected >= len(self.player.party):
+            self.selected = max(0, len(self.player.party) - 1)
         self.refresh()
-        self.master.update_sidebar()
+        if hasattr(self.master, "update_sidebar"):
+            self.master.update_sidebar()
+
 
 class CatalogDialog(tk.Toplevel):
     def __init__(self, master, specs: Dict[str, MonsterSpec]):
@@ -1128,6 +1274,15 @@ class Player:
 
     def active(self) -> Optional[Monster]:
         return self.party[0] if self.party else None
+    
+    def add_to_party(self, mon: "Monster") -> bool:
+        """
+        Try to add a monster to the party. Returns True if added, False if party is full (6).
+        """
+        if len(self.party) >= 6:
+            return False
+        self.party.append(mon)
+        return True
 
 # ------------------ Main ------------------
 
