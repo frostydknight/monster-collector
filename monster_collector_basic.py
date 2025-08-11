@@ -395,8 +395,10 @@ class BattleWindow(tk.Toplevel):
         self.transient(app)
         self.grab_set()
 
-        # Combatants
-        self.pl = Combatant(player.active(), player.active().max_hp)
+        # Combatants (track HP for each party member during this battle)
+        self.party_state: List[Combatant] = [Combatant(m, m.max_hp) for m in player.party]
+        self.pl_index: int = 0
+        self.pl: Combatant = self.party_state[self.pl_index]
         self.en = Combatant(wild, wild.max_hp)
 
         # Layout: Pokémon-style
@@ -441,9 +443,10 @@ class BattleWindow(tk.Toplevel):
         cmd_box.pack(anchor="e", pady=10)
         self.btn_move1 = ttk.Button(cmd_box, text="Move1", command=lambda: self.turn(1), width=18)
         self.btn_move2 = ttk.Button(cmd_box, text="Move2", command=lambda: self.turn(2), width=18)
-        self.btn_bag  = ttk.Button(cmd_box, text="Bag",   command=self.use_bag, width=18)
-        self.btn_run  = ttk.Button(cmd_box, text="Run",   command=self.try_run, width=18)
-        for b in (self.btn_move1, self.btn_move2, self.btn_bag, self.btn_run):
+        self.btn_bag   = ttk.Button(cmd_box, text="Bag",   command=self.use_bag, width=18)
+        self.btn_switch= ttk.Button(cmd_box, text="Switch", command=self.open_switch_dialog, width=18)
+        self.btn_run   = ttk.Button(cmd_box, text="Run",   command=self.try_run, width=18)
+        for b in (self.btn_move1, self.btn_move2, self.btn_bag, self.btn_switch, self.btn_run):
             b.pack(fill="x", pady=4)
 
         # Load icons
@@ -486,6 +489,36 @@ class BattleWindow(tk.Toplevel):
             self.btn_move2.configure(text=self.pl.mon.moves[1].name, state="normal")
         else:
             self.btn_move2.configure(text="—", state="disabled")
+        # Enable switch only if there’s another conscious party member
+        if hasattr(self, "btn_switch"):
+            self.btn_switch.configure(state=("normal" if len(self.alive_indices()) > 1 else "disabled"))
+    
+    def alive_indices(self) -> List[int]:
+        return [i for i, c in enumerate(self.party_state) if c.current_hp > 0]
+
+    def open_switch_dialog(self, force: bool = False):
+        # If force=True (after faint), enemy does NOT get a free move.
+        SwitchDialog(self, self.party_state, self.pl_index,
+                    on_switch=lambda i: self.switch_to(i, enemy_free=not force))
+
+    def switch_to(self, new_idx: int, enemy_free: bool = True):
+        if new_idx == self.pl_index:
+            return
+        if self.party_state[new_idx].current_hp <= 0:
+            return
+        self.pl_index = new_idx
+        self.pl = self.party_state[self.pl_index]
+        self.set_icon(self.you_img_label, self.pl.mon, maxd=160)
+        self.refresh()
+        if enemy_free and self.en.current_hp > 0:
+            # Enemy gets a free move after a voluntary switch
+            mv = random.choice(self.en.mon.moves)
+            dmg, msg = calc_damage(self.en.mon, self.pl.mon, mv)
+            self.pl.current_hp = max(0, self.pl.current_hp - dmg)
+            self.msg_var.set("Switched!\n" + msg)
+            self.after(50, self.check_outcome)
+        else:
+            self.msg_var.set("Switched!")
 
     def turn(self, move_idx: int):
         player_first = self.pl.mon.speed >= self.en.mon.speed
@@ -514,14 +547,16 @@ class BattleWindow(tk.Toplevel):
             messagebox.showinfo("Battle", "The wild fainted!\n" + "\n".join(logs))
             self.end()
         elif self.pl.current_hp <= 0:
-            if len(self.player.party) <= 1:
+            others = [i for i in self.alive_indices() if i != self.pl_index]
+            if others:
+                messagebox.showinfo("Battle", f"{self.pl.mon.spec.name} fainted! Choose a replacement.")
+                self.open_switch_dialog(force=True)
+            else:
                 messagebox.showinfo("Battle", f"{self.pl.mon.spec.name} fainted! You blacked out and returned to the hut.")
                 self.app.heal_party()
                 self.app.player.x, self.app.player.y = 1, 1
                 self.app.redraw_map()
-            else:
-                messagebox.showinfo("Battle", f"{self.pl.mon.spec.name} fainted! You lost the battle.")
-            self.end()
+                self.end()
 
     def use_bag(self):
         BagUseDialog(self, self.player, on_use=self.after_bag_action)
@@ -612,6 +647,47 @@ class ShopDialog(tk.Toplevel):
         self.refresh_money()
         self.master_app.update_sidebar()
         messagebox.showinfo("Shop", f"Purchased 1x {name}!")
+
+class SwitchDialog(tk.Toplevel):
+    def __init__(self, master: "BattleWindow", party_state: List["Combatant"], current_idx: int, on_switch):
+        super().__init__(master)
+        self.title("Switch Monster")
+        self.resizable(False, False)
+        self.on_switch = on_switch
+        self.party_state = party_state
+        self.current_idx = current_idx
+
+        self.list = tk.Listbox(self, width=36)
+        self.list.pack(side="left", fill="both", expand=True, padx=(8,0), pady=8)
+
+        btns = tk.Frame(self)
+        btns.pack(side="right", fill="y", padx=8, pady=8)
+        ttk.Button(btns, text="Switch", command=self.do_switch).pack(fill="x", pady=2)
+        ttk.Button(btns, text="Cancel", command=self.destroy).pack(fill="x", pady=(8,2))
+
+        for i, c in enumerate(party_state):
+            tag = " (active)" if i == current_idx else ""
+            status = f"{c.mon.spec.name} Lv{c.mon.level} — HP {c.current_hp}/{c.mon.max_hp}{tag}"
+            self.list.insert(tk.END, status)
+
+        # Preselect the first eligible non-active, conscious teammate
+        for i, c in enumerate(party_state):
+            if i != current_idx and c.current_hp > 0:
+                self.list.selection_set(i)
+                break
+
+    def do_switch(self):
+        sel = self.list.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        if idx == self.current_idx:
+            return
+        if self.party_state[idx].current_hp <= 0:
+            messagebox.showinfo("Switch", "That monster has no HP left!")
+            return
+        self.destroy()
+        self.on_switch(idx)
 
 class BagDialog(tk.Toplevel):
     def __init__(self, master, player: 'Player'):
