@@ -83,6 +83,34 @@ DEFAULT_MONSTERS = {
             {"name": "Labyrinth Rush", "power": 50, "accuracy": 0.85},
         ],
     },
+    "caterpillar_girl": {
+        "name": "Caterpillar Girl",
+        "element": "Normal",
+        "base_hp": 20,
+        "base_atk": 8,
+        "base_def": 8,
+        "base_spd": 8,
+        "catch_rate": 180,
+        "icon": "assets/monsters/caterpillar_girl.png",
+        "learnset": [
+            {"name": "Tackle", "power": 30, "accuracy": 0.95},
+            {"name": "String Shot", "power": 20, "accuracy": 1.0},
+        ],
+    },
+    "mouse_girl": {
+        "name": "Mouse Girl",
+        "element": "Normal",
+        "base_hp": 16,
+        "base_atk": 7,
+        "base_def": 5,
+        "base_spd": 14,
+        "catch_rate": 200,
+        "icon": "assets/monsters/mouse_girl.png",
+        "learnset": [
+            {"name": "Tackle", "power": 30, "accuracy": 0.95},
+            {"name": "Dart", "power": 20, "accuracy": 1.0},
+        ],
+    },
 }
 
 ELEMENT_EFFECTIVENESS = {
