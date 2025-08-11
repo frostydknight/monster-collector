@@ -48,15 +48,15 @@
       "name": "Minotaur",
       "element": "Earth",
       "base_hp": 28,
-      "base_atk": 12,
-      "base_def": 10,
+      "base_atk": 8,
+      "base_def": 12,
       "base_spd": 6,
       "catch_rate": 120,
       "icon": "assets/monsters/minotaur.png",
       "learnset": [
         {
-          "name": "Horn Bash",
-          "power": 40,
+          "name": "Tackle",
+          "power": 30,
           "accuracy": 0.95
         },
         {

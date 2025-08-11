@@ -5,6 +5,7 @@
 - Map redo
 - 2 new monsters
 - Trainer Battles
+- Tile Manager
 
 ## [1.0.1] - 2025-08-11
 ### Added
