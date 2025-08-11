@@ -1,31 +1,19 @@
 #!/usr/bin/env python3
 """
-Monster Collector — Tkinter Edition
------------------------------------
-Single-file, minimal-dependency (Tkinter only) Pokémon-like prototype with:
-- Windowed UI (Tkinter)
-- Tile-based overworld map on a Canvas
-- Random encounters with on-canvas battle UI (buttons, no enter-spam)
-- Capture system (Charm Orbs)
-- Party & Catalog viewers with optional PNG/GIF icons
-- Healing hut and shop
-- monsters.json database (auto-created on first run, editable), supports per-monster icon paths
-
-Run:
-    python monster_collector_tk.py
-
-Notes:
-- Uses only the Python standard library (tkinter)
-- PNG/GIF icons recommended (placed under ./assets/monsters). See monsters.json "icon" field
-- Designed for clarity and hackability over performance
+Monster Collector — Tkinter Edition (Battle Window)
+---------------------------------------------------
+- Overworld on main window
+- Battles open in a separate Pokémon-style window layout
+- Opponent stats top-left, opponent icon top-right
+- Player stats bottom-left, player icon next to it
+- Commands grouped bottom-right (Move1, Move2, Bag, Run)
+- No external libraries beyond the Python standard library (tkinter)
 """
 from __future__ import annotations
 
 import json
-import math
 import os
 import random
-import sys
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -44,17 +32,14 @@ WORLD_MAP = [
     "#......#....#......#....#",
     "########################",
 ]
-# Legend:
-# . = plain, T = tall grass, # = wall, H = healing hut, C = shop, ' ' = path
 
-TILE = 28  # tile size in pixels
+TILE = 28
 CANVAS_W = len(WORLD_MAP[0]) * TILE
 CANVAS_H = len(WORLD_MAP) * TILE
 
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 MONSTER_JSON = os.path.join(os.path.dirname(__file__), "monsters.json")
 
-# Default DB written on first run
 DEFAULT_MONSTERS = {
     "slime_girl": {
         "name": "Slime Girl",
@@ -208,8 +193,7 @@ def calc_damage(attacker: Monster, defender: Monster, move: Move) -> Tuple[int, 
     import random as _r
     if _r.random() > move.accuracy:
         return 0, f"{attacker.spec.name}'s {move.name} missed!"
-    base = move.power + attacker.atk - defender.defense
-    base = max(1, base)
+    base = max(1, move.power + attacker.atk - defender.defense)
     mult = type_multiplier(attacker, defender)
     variance = _r.uniform(0.85, 1.0)
     dmg = int(base * mult * variance)
@@ -240,21 +224,20 @@ class GameApp(tk.Tk):
         self.resizable(False, False)
         os.makedirs(os.path.join(ASSETS_DIR, "monsters"), exist_ok=True)
 
+        self.in_battle = False
+
         # Game state
         self.specs = load_monster_db()
         self.player = Player()
         starter_key = random.choice(list(self.specs.keys()))
         self.player.party.append(Monster(self.specs[starter_key], level=3))
 
-        # UI frames
+        # Overworld UI
         self.map_canvas = tk.Canvas(self, width=CANVAS_W, height=CANVAS_H, bg="#1a1a1a", highlightthickness=0)
         self.map_canvas.grid(row=0, column=0, padx=8, pady=8)
 
         self.sidebar = Sidebar(self)
         self.sidebar.grid(row=0, column=1, sticky="ns", padx=(0,8), pady=8)
-
-        self.battle_frame = BattleFrame(self)
-        self.battle_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=8, pady=(0,8))
 
         self.bind_all("<Key>", self.on_key)
         self.redraw_map()
@@ -279,9 +262,8 @@ class GameApp(tk.Tk):
                 elif ch == 'C':
                     c.create_rectangle(x0, y0, x1, y1, fill="#6d4c41", outline="#4e382f")
                     c.create_text((x0+x1)//2, (y0+y1)//2, text='C', fill='white')
-                else:  # '.', ' ', etc.
+                else:
                     c.create_rectangle(x0, y0, x1, y1, fill="#2b2b2b", outline="#222")
-        # draw player
         px, py = self.player.x, self.player.y
         c.create_oval(px*TILE+6, py*TILE+6, px*TILE+TILE-6, py*TILE+TILE-6, fill="#cddc39", outline="#9e9d24")
 
@@ -295,8 +277,7 @@ class GameApp(tk.Tk):
 
     # ------------- Input -------------
     def on_key(self, ev):
-        if self.battle_frame.active:
-            # battle consumes inputs
+        if self.in_battle:
             return
         key = ev.keysym.lower()
         if key in ("w","a","s","d","up","down","left","right"):
@@ -323,7 +304,6 @@ class GameApp(tk.Tk):
             self.update_sidebar()
             self.check_tile_event()
 
-            # random encounters on walkable terrain
             t = self.tile_at(self.player.x, self.player.y)
             if t in {'.','T',' '} and self.player.party:
                 base = 0.08 if t == '.' else (0.16 if t == 'T' else 0.04)
@@ -343,7 +323,9 @@ class GameApp(tk.Tk):
         wild = self.random_wild()
         if not self.player.party:
             return
-        self.battle_frame.start(self.player, wild)
+        if not self.in_battle:
+            self.in_battle = True
+            BattleWindow(self, self.player, wild)
 
     def random_wild(self) -> Monster:
         key = random.choice(list(self.specs.keys()))
@@ -395,64 +377,110 @@ class Sidebar(tk.Frame):
     def open_catalog(self):
         CatalogDialog(self, self.master.specs)
 
-# ------------------ Battle Frame ------------------
+# ------------------ Battle Window ------------------
 
-class BattleFrame(tk.Frame):
-    def __init__(self, master: GameApp):
-        super().__init__(master, relief="ridge", borderwidth=1)
-        self.active = False
-        self.player = None
-        self.pl = None
-        self.en = None
-        self.msg_var = tk.StringVar(value="")
-
-        top = tk.Frame(self)
-        top.pack(fill="x", padx=6, pady=4)
-        self.you_var = tk.StringVar()
-        self.foe_var = tk.StringVar()
-        tk.Label(top, textvariable=self.you_var, anchor="w").pack(side="left", expand=True, fill="x")
-        tk.Label(top, textvariable=self.foe_var, anchor="e").pack(side="right", expand=True, fill="x")
-
-        self.msg = tk.Label(self, textvariable=self.msg_var, anchor="w", justify="left")
-        self.msg.pack(fill="x", padx=6)
-
-        btns = tk.Frame(self)
-        btns.pack(fill="x", padx=6, pady=6)
-        self.btn_move1 = ttk.Button(btns, text="Move1", command=lambda: self.turn(1))
-        self.btn_move2 = ttk.Button(btns, text="Move2", command=lambda: self.turn(2))
-        self.btn_bag = ttk.Button(btns, text="Bag", command=self.use_bag)
-        self.btn_run = ttk.Button(btns, text="Run", command=self.try_run)
-        for b in (self.btn_move1, self.btn_move2, self.btn_bag, self.btn_run):
-            b.pack(side="left", expand=True, fill="x", padx=2)
-
-    def start(self, player: 'Player', wild: Monster):
+class BattleWindow(tk.Toplevel):
+    def __init__(self, app: 'GameApp', player: 'Player', wild: Monster):
+        super().__init__(app)
+        self.app = app
         self.player = player
+        self.title("Battle")
+        self.resizable(False, False)
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.transient(app)
+        self.grab_set()
+
+        # Combatants
         self.pl = Combatant(player.active(), player.active().max_hp)
         self.en = Combatant(wild, wild.max_hp)
-        self.active = True
-        self.pack_forget(); self.grid()
+
+        # Layout: Pokémon-style
+        main = tk.Frame(self, bg="#1b1b1b")
+        main.pack(padx=10, pady=10)
+        main.grid_columnconfigure(0, weight=1)
+        main.grid_columnconfigure(1, weight=1)
+
+        # Foe stats (top-left)
+        self.foe_var = tk.StringVar()
+        foe_box = tk.Frame(main, bg="#263238", bd=1, relief="ridge")
+        foe_box.grid(row=0, column=0, sticky="nw", padx=6, pady=6)
+        tk.Label(foe_box, textvariable=self.foe_var, fg="white", bg="#263238", justify="left", padx=8, pady=6).pack()
+
+        # Foe icon (top-right)
+        self.foe_img_label = tk.Label(main, bg="#1b1b1b")
+        self.foe_img_label.grid(row=0, column=1, sticky="ne", padx=6, pady=6)
+
+        # Player stats (bottom-left)
+        self.you_var = tk.StringVar()
+        you_box = tk.Frame(main, bg="#263238", bd=1, relief="ridge")
+        you_box.grid(row=1, column=0, sticky="sw", padx=6, pady=6)
+        tk.Label(you_box, textvariable=self.you_var, fg="white", bg="#263238", justify="left", padx=8, pady=6).pack()
+
+        # Right column: player icon + commands
+        right_col = tk.Frame(main, bg="#1b1b1b")
+        right_col.grid(row=1, column=1, sticky="se", padx=6, pady=6)
+        self.you_img_label = tk.Label(right_col, bg="#1b1b1b")
+        self.you_img_label.pack(anchor="e", pady=(0,8))
+
+        # Message box full-width
+        self.msg_var = tk.StringVar(value=f"A wild {wild.spec.name} Lv{wild.level} appeared!")
+        msg_box = tk.Frame(self, bg="#111")
+        msg_box.pack(fill="x", padx=10)
+        tk.Label(msg_box, textvariable=self.msg_var, fg="white", bg="#111", anchor="w", justify="left", padx=8, pady=6).pack(fill="x")
+
+        # Commands (lower-right)
+        cmd_box = tk.Frame(right_col)
+        cmd_box.pack(anchor="e")
+        self.btn_move1 = ttk.Button(cmd_box, text="Move1", command=lambda: self.turn(1))
+        self.btn_move2 = ttk.Button(cmd_box, text="Move2", command=lambda: self.turn(2))
+        self.btn_bag  = ttk.Button(cmd_box, text="Bag",   command=self.use_bag)
+        self.btn_run  = ttk.Button(cmd_box, text="Run",   command=self.try_run)
+        for b in (self.btn_move1, self.btn_move2, self.btn_bag, self.btn_run):
+            b.pack(fill="x", pady=2)
+
+        # Load icons
+        self.set_icon(self.foe_img_label, self.en.mon, maxd=128)
+        self.set_icon(self.you_img_label, self.pl.mon, maxd=128)
+
         self.refresh()
-        self.msg_var.set(f"A wild {wild.spec.name} Lv{wild.level} appeared!")
+
+    def on_close(self):
+        # Prevent closing mid-battle via window X
+        pass
 
     def end(self):
-        self.active = False
-        self.msg_var.set("")
-        self.grid()
-        self.master.update_sidebar()
+        self.app.in_battle = False
+        self.app.update_sidebar()
+        self.grab_release()
+        self.destroy()
+
+    def set_icon(self, label: tk.Label, mon: Monster, maxd: int = 128):
+        img = None
+        if mon.spec.icon and os.path.exists(mon.spec.icon):
+            try:
+                raw = tk.PhotoImage(file=mon.spec.icon)
+                w,h = raw.width(), raw.height()
+                ss = max(1, max(w//maxd, h//maxd))
+                img = raw.subsample(ss, ss) if ss > 1 else raw
+            except Exception:
+                img = None
+        if img is None:
+            label.configure(text=mon.spec.name, image="", fg="#ccc", bg="#1b1b1b")
+            label.image = None
+        else:
+            label.configure(image=img, text="")
+            label.image = img
 
     def refresh(self):
-        self.you_var.set(f"You: {self.pl.mon.spec.name} HP {self.pl.current_hp}/{self.pl.mon.max_hp}")
-        self.foe_var.set(f"Wild: {self.en.mon.spec.name} HP {self.en.current_hp}/{self.en.mon.max_hp}")
+        self.you_var.set(f"{self.pl.mon.spec.name}  Lv{self.pl.mon.level}\nHP {self.pl.current_hp}/{self.pl.mon.max_hp}")
+        self.foe_var.set(f"{self.en.mon.spec.name}  Lv{self.en.mon.level}\nHP {self.en.current_hp}/{self.en.mon.max_hp}")
         self.btn_move1.configure(text=self.pl.mon.moves[0].name if self.pl.mon.moves else "Move1")
         if len(self.pl.mon.moves) > 1:
-            self.btn_move2.configure(text=self.pl.mon.moves[1].name)
+            self.btn_move2.configure(text=self.pl.mon.moves[1].name, state="normal")
         else:
             self.btn_move2.configure(text="—", state="disabled")
 
     def turn(self, move_idx: int):
-        if not self.active:
-            return
-        # determine order
         player_first = self.pl.mon.speed >= self.en.mon.speed
         order = [("player", move_idx), ("enemy", None)] if player_first else [("enemy", None), ("player", move_idx)]
         log = []
@@ -460,7 +488,7 @@ class BattleFrame(tk.Frame):
             if self.pl.current_hp <= 0 or self.en.current_hp <= 0:
                 break
             if who == "player":
-                mv = self.pl.mon.moves[min(max(idx-1,0), len(self.pl.mon.moves)-1)]
+                mv = self.pl.mon.moves[min(max(move_idx-1,0), len(self.pl.mon.moves)-1)]
                 dmg, msg = calc_damage(self.pl.mon, self.en.mon, mv)
                 self.en.current_hp = max(0, self.en.current_hp - dmg)
                 log.append(msg)
@@ -479,25 +507,16 @@ class BattleFrame(tk.Frame):
             messagebox.showinfo("Battle", "The wild fainted!\n" + "\n".join(logs))
             self.end()
         elif self.pl.current_hp <= 0:
-            # Player's active monster fainted. Do NOT remove from party.
-            # If this was the last standing monster, send player back to the hut and fully heal.
             if len(self.player.party) <= 1:
                 messagebox.showinfo("Battle", f"{self.pl.mon.spec.name} fainted! You blacked out and returned to the hut.")
-                self.master.heal_party()
-                self.master.player.x, self.master.player.y = 1, 1
-                self.master.redraw_map()
+                self.app.heal_party()
+                self.app.player.x, self.app.player.y = 1, 1
+                self.app.redraw_map()
             else:
                 messagebox.showinfo("Battle", f"{self.pl.mon.spec.name} fainted! You lost the battle.")
             self.end()
 
     def use_bag(self):
-        if not self.active:
-            return
-        # Simple bag actions inside battle
-        items = list(self.player.bag.items())
-        if not items:
-            messagebox.showinfo("Bag", "Your bag is empty.")
-            return
         BagUseDialog(self, self.player, on_use=self.after_bag_action)
 
     def after_bag_action(self, did_action: bool, used_capture: bool):
@@ -507,24 +526,19 @@ class BattleFrame(tk.Frame):
             if attempt_capture(self.en.mon, ball_bonus=1.2):
                 messagebox.showinfo("Capture", f"Gotcha! {self.en.mon.spec.name} was captured!")
                 self.player.party.append(self.en.mon)
-                self.end()
-                return
+                self.end(); return
             else:
                 self.msg_var.set(f"The wild {self.en.mon.spec.name} broke free!")
-                # enemy gets a free move
                 mv = random.choice(self.en.mon.moves)
                 dmg, msg = calc_damage(self.en.mon, self.pl.mon, mv)
                 self.pl.current_hp = max(0, self.pl.current_hp - dmg)
-                self.refresh()
-                self.after(50, self.check_outcome)
+                self.refresh(); self.after(50, self.check_outcome)
         else:
-            # enemy acts once after your bag use
             mv = random.choice(self.en.mon.moves)
             dmg, msg = calc_damage(self.en.mon, self.pl.mon, mv)
             self.pl.current_hp = max(0, self.pl.current_hp - dmg)
             self.msg_var.set(msg)
-            self.refresh()
-            self.after(50, self.check_outcome)
+            self.refresh(); self.after(50, self.check_outcome)
 
     def try_run(self):
         import random as _r
@@ -533,13 +547,11 @@ class BattleFrame(tk.Frame):
             self.end()
         else:
             messagebox.showinfo("Run", "Couldn't escape!")
-            # enemy free move
             mv = random.choice(self.en.mon.moves)
             dmg, msg = calc_damage(self.en.mon, self.pl.mon, mv)
             self.pl.current_hp = max(0, self.pl.current_hp - dmg)
             self.msg_var.set(msg)
-            self.refresh()
-            self.after(50, self.check_outcome)
+            self.refresh(); self.after(50, self.check_outcome)
 
 # ------------------ Dialogs ------------------
 
@@ -555,7 +567,7 @@ class BagDialog(tk.Toplevel):
         ttk.Button(frm, text="Close", command=self.destroy).pack(pady=(8,0))
 
 class BagUseDialog(tk.Toplevel):
-    def __init__(self, master: BattleFrame, player: 'Player', on_use):
+    def __init__(self, master: tk.Misc, player: 'Player', on_use):
         super().__init__(master)
         self.title("Use Item")
         self.resizable(False, False)
@@ -578,7 +590,7 @@ class BagUseDialog(tk.Toplevel):
             self.destroy(); self.on_use(True, used_capture)
         elif item == "Potion":
             # heal active
-            bf: BattleFrame = self.master
+            bf: BattleWindow = self.master
             heal = min(20, bf.pl.mon.max_hp - bf.pl.current_hp)
             if heal <= 0:
                 messagebox.showinfo("Potion", "Already at full HP.")
@@ -669,60 +681,26 @@ class IconViewer(tk.Toplevel):
         super().__init__(master)
         self.title(mon.spec.name)
         self.resizable(False, False)
-        # Load PNG/GIF via PhotoImage; show placeholder if not found
         img = None
         if mon.spec.icon and os.path.exists(mon.spec.icon):
             try:
                 img = tk.PhotoImage(file=mon.spec.icon)
-            except Exception as e:
+            except Exception:
                 img = None
         if img is None:
-            # placeholder canvas
             cv = tk.Canvas(self, width=128, height=128, bg="#222", highlightthickness=0)
             cv.pack(padx=10, pady=10)
             cv.create_rectangle(8,8,120,120, outline="#666")
             cv.create_text(64,64, text=mon.spec.name, fill="#aaa", width=110)
         else:
-            # scale down to max 128x128 if larger
             w,h = img.width(), img.height()
-            maxd = 128
-            # integer subsample only; keeps it simple and crisp for pixel art
-            ss = max(1, max(w//maxd, h//maxd))
+            ss = max(1, max(w//128, h//128))
             if ss > 1:
                 img = img.subsample(ss, ss)
-            lbl = tk.Label(self, image=img)
-            lbl.image = img  # keep ref
+            lbl = tk.Label(self, image=img); lbl.image = img
             lbl.pack(padx=8, pady=8)
         tk.Label(self, text=f"{mon.spec.name} (Lv {mon.level}) — {mon.spec.element}").pack(pady=(0,8))
         ttk.Button(self, text="Close", command=self.destroy).pack(pady=(0,8))
-
-class ShopDialog(tk.Toplevel):
-    def __init__(self, master, player: 'Player'):
-        super().__init__(master)
-        self.title("Charm Shop")
-        self.resizable(False, False)
-        self.player = player
-        frm = tk.Frame(self); frm.pack(padx=12, pady=12)
-        tk.Label(frm, text=f"Coins: {player.money}").pack(anchor="w")
-        ttk.Button(frm, text="Buy Charm Orb (50)", command=self.buy_orb).pack(fill="x", pady=2)
-        ttk.Button(frm, text="Buy Potion (40)", command=self.buy_potion).pack(fill="x", pady=2)
-        ttk.Button(frm, text="Close", command=self.destroy).pack(fill="x", pady=(8,0))
-
-    def buy_orb(self):
-        if self.player.money >= 50:
-            self.player.money -= 50
-            self.player.bag["Charm Orb"] = self.player.bag.get("Charm Orb", 0) + 1
-            self.master.update_sidebar()
-        else:
-            messagebox.showinfo("Shop", "Not enough coins.")
-
-    def buy_potion(self):
-        if self.player.money >= 40:
-            self.player.money -= 40
-            self.player.bag["Potion"] = self.player.bag.get("Potion", 0) + 1
-            self.master.update_sidebar()
-        else:
-            messagebox.showinfo("Shop", "Not enough coins.")
 
 # ------------------ Combatant & Player ------------------
 
