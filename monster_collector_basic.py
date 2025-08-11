@@ -261,6 +261,7 @@ class GameApp(tk.Tk):
         # Game state
         self.specs = load_monster_db()
         self.player = Player()
+        self.trainers: List[Trainer] = self.create_trainers()
         starter_key = random.choice(list(self.specs.keys()))
         self.player.party.append(Monster(self.specs[starter_key], level=3))
 
@@ -301,6 +302,14 @@ class GameApp(tk.Tk):
                     c.create_rectangle(x0, y0, x1, y1, fill="#2b2b2b", outline="#222")
         px, py = self.player.x, self.player.y
         c.create_oval(px*TILE+6, py*TILE+6, px*TILE+TILE-6, py*TILE+TILE-6, fill="#cddc39", outline="#9e9d24")
+        # draw trainers (not defeated)
+        for tr in getattr(self, "trainers", []):
+            if tr.defeated:
+                continue
+            x0, y0 = tr.x * TILE, tr.y * TILE
+            self.map_canvas.create_rectangle(x0+6, y0+6, x0+TILE-6, y0+TILE-6,
+                                            outline="#ff6961", fill="", width=2)
+            self.map_canvas.create_text(x0+TILE//2, y0+TILE//2, text='R', fill='#ff6961')  # R = trainer
 
     def tile_at(self, x: int, y: int) -> str:
         if 0 <= y < len(WORLD_MAP) and 0 <= x < len(WORLD_MAP[0]):
@@ -309,6 +318,20 @@ class GameApp(tk.Tk):
 
     def update_sidebar(self):
         self.sidebar.refresh(self.player)
+
+    def create_trainers(self) -> List[Trainer]:
+        # Choose safe floor tiles (not walls) that exist on your map
+        # (x, y, facing)
+        coords = [
+            (5, 1, "W"),
+            (14, 3, "S"),
+            (18, 6, "W"),
+        ]
+        trainers: List[Trainer] = []
+        for (tx, ty, face) in coords:
+            # Party will be generated on first engagement so it persists across attempts
+            trainers.append(Trainer(x=tx, y=ty, facing=face))
+        return trainers
 
     # ------------- Input -------------
     def on_key(self, ev):
@@ -338,6 +361,7 @@ class GameApp(tk.Tk):
             self.redraw_map()
             self.update_sidebar()
             self.check_tile_event()
+            self.check_trainer_engagement()
 
             t = self.tile_at(self.player.x, self.player.y)
             if t in {'.','T',' '} and self.player.party:
@@ -360,7 +384,7 @@ class GameApp(tk.Tk):
             return
         if not self.in_battle:
             self.in_battle = True
-            BattleWindow(self, self.player, wild)
+            BattleWindow(self, self.player, enemy_party=[wild], is_trainer=False)
 
     def random_wild(self) -> Monster:
         key = random.choice(list(self.specs.keys()))
@@ -371,6 +395,50 @@ class GameApp(tk.Tk):
     def heal_party(self):
         # current HP tracked only during battle; out of battle everyone is considered healthy
         pass
+
+    # -------------- Trainer Helper Functions --------------
+    def tile_in_front_of_trainer(self, tr: Trainer) -> Tuple[int, int]:
+        # The tile the trainer is "looking at"
+        if tr.facing == "N":
+            return tr.x, tr.y - 1
+        if tr.facing == "S":
+            return tr.x, tr.y + 1
+        if tr.facing == "E":
+            return tr.x + 1, tr.y
+        # default W
+        return tr.x - 1, tr.y
+
+    def check_trainer_engagement(self):
+        # If player stepped directly in front of a non-defeated trainer, start battle
+        if self.in_battle:
+            return
+        for tr in self.trainers:
+            if tr.defeated:
+                continue
+            fx, fy = self.tile_in_front_of_trainer(tr)
+            if (self.player.x, self.player.y) == (fx, fy):
+                # Lazily generate the trainer's party once (1–2 monsters Lv 4–6)
+                if not tr.party:
+                    count = random.randint(1, 2)
+                    keys = list(self.specs.keys())
+                    for _ in range(count):
+                        spec = self.specs[random.choice(keys)]
+                        lvl = random.randint(4, 6)
+                        tr.party.append(Monster(spec, level=lvl))
+                self.in_battle = True
+                BattleWindow(self, self.player,
+                            enemy_party=[m for m in tr.party],
+                            is_trainer=True,
+                            trainer_ref=tr,
+                            on_trainer_defeated=self.on_trainer_defeated)
+                break
+
+    def on_trainer_defeated(self, trainer: Trainer):
+        trainer.defeated = True
+        # Optional reward
+        self.player.money += 50
+        self.update_sidebar()
+        self.redraw_map()
 
 # ------------------ Sidebar ------------------
 
@@ -411,11 +479,19 @@ class Sidebar(tk.Frame):
 
     def open_catalog(self):
         CatalogDialog(self, self.master.specs)
+    
+    def update_sidebar(self):
+        # Forward to the GameApp’s update_sidebar()
+        self.master.update_sidebar()
 
 # ------------------ Battle Window ------------------
 
 class BattleWindow(tk.Toplevel):
-    def __init__(self, app: 'GameApp', player: 'Player', wild: Monster):
+    def __init__(self, app: 'GameApp', player: 'Player',
+                 enemy_party: Optional[List[Monster]] = None,
+                 is_trainer: bool = False,
+                 trainer_ref: Optional['Trainer'] = None,
+                 on_trainer_defeated=None):
         super().__init__(app)
         self.app = app
         self.player = player
@@ -430,7 +506,31 @@ class BattleWindow(tk.Toplevel):
         self.party_state: List[Combatant] = [Combatant(m, m.max_hp) for m in player.party]
         self.pl_index: int = 0
         self.pl: Combatant = self.party_state[self.pl_index]
-        self.en = Combatant(wild, wild.max_hp)
+        # Enemy setup: trainer party or single wild
+        self.is_trainer = is_trainer
+        self.trainer_ref = trainer_ref
+        self.on_trainer_defeated_cb = on_trainer_defeated
+
+        # Normalize enemy_party so it's always a list[Monster]
+        if enemy_party is None:
+            enemy_party = []
+        elif isinstance(enemy_party, Monster):
+            enemy_party = [enemy_party]
+
+        if enemy_party and len(enemy_party) > 0:
+            # Trainer battle
+            self.enemy_party_state: List[Combatant] = [Combatant(m, m.max_hp) for m in enemy_party]
+            self.en_index = 0
+            self.en = self.enemy_party_state[self.en_index]
+            self.msg_var = tk.StringVar(value=f"Trainer challenges you with {self.en.mon.spec.name} Lv{self.en.mon.level}!")
+        else:
+            # Backward compatible wild encounter path
+            # Build a single random wild if not provided
+            wild = self.app.random_wild()
+            self.enemy_party_state = [Combatant(wild, wild.max_hp)]
+            self.en_index = 0
+            self.en = self.enemy_party_state[0]
+            self.msg_var = tk.StringVar(value=f"A wild {wild.spec.name} Lv{wild.level} appeared!")
 
         # Layout: Pokémon-style
         main = tk.Frame(self, bg="#1b1b1b")
@@ -463,7 +563,6 @@ class BattleWindow(tk.Toplevel):
         self.you_img_label.pack(anchor="e", pady=(0,12))
 
         # Message box full-width
-        self.msg_var = tk.StringVar(value=f"A wild {wild.spec.name} Lv{wild.level} appeared!")
         msg_box = tk.Frame(self, bg="#111")
         msg_box.pack(fill="x", padx=20, pady=(0,10))
         tk.Label(msg_box, textvariable=self.msg_var, fg="white", bg="#111", anchor="w", 
@@ -528,9 +627,25 @@ class BattleWindow(tk.Toplevel):
         return [i for i, c in enumerate(self.party_state) if c.current_hp > 0]
 
     def open_switch_dialog(self, force: bool = False):
-        # If force=True (after faint), enemy does NOT get a free move.
-        SwitchDialog(self, self.party_state, self.pl_index,
-                    on_switch=lambda i: self.switch_to(i, enemy_free=not force))
+        # If this window was closed/destroyed, bail safely
+        try:
+            if not self.winfo_exists():
+                return
+        except tk.TclError:
+            return
+
+        # Prefer this window as the parent; fall back to the root app if needed
+        dlg_master = self
+        try:
+            SwitchDialog(
+                dlg_master,
+                self.party_state,
+                self.pl_index,
+                on_switch=lambda i: self.switch_to(i, enemy_free=not force)
+            )
+        except tk.TclError:
+            # Window got destroyed between scheduling and now—just bail
+            return
 
     def switch_to(self, new_idx: int, enemy_free: bool = True):
         if new_idx == self.pl_index:
@@ -575,8 +690,26 @@ class BattleWindow(tk.Toplevel):
     def check_outcome(self):
         if self.en.current_hp <= 0:
             logs = self.pl.mon.gain_exp(12 + self.en.mon.level * 3)
-            messagebox.showinfo("Battle", "The wild fainted!\n" + "\n".join(logs))
-            self.end()
+
+            if self.is_trainer and self.en_index + 1 < len(self.enemy_party_state):
+                # Next trainer monster comes out immediately (no free hit for player)
+                self.en_index += 1
+                self.en = self.enemy_party_state[self.en_index]
+                self.set_icon(self.foe_img_label, self.en.mon, maxd=160)
+                self.refresh()
+                messagebox.showinfo("Battle", "Foe fainted!\n" + "\n".join(logs) +
+                                    f"\nTrainer sends out {self.en.mon.spec.name} Lv{self.en.mon.level}!")
+                return
+            else:
+                # Trainer defeated or wild defeated
+                if self.is_trainer:
+                    messagebox.showinfo("Battle", "Trainer is out of monsters!\n" + "\n".join(logs))
+                    if self.on_trainer_defeated_cb and self.trainer_ref:
+                        self.on_trainer_defeated_cb(self.trainer_ref)
+                else:
+                    messagebox.showinfo("Battle", "The wild fainted!\n" + "\n".join(logs))
+                self.end()
+                return
         elif self.pl.current_hp <= 0:
             others = [i for i in self.alive_indices() if i != self.pl_index]
             if others:
@@ -596,6 +729,11 @@ class BattleWindow(tk.Toplevel):
         if not did_action:
             return
         if used_capture:
+            if self.is_trainer:
+                messagebox.showinfo("Capture", "You can't capture a trainer's monster!")
+                # (Do not consume the orb since it's not allowed)
+                self.player.bag["Charm Orb"] = self.player.bag.get("Charm Orb", 0) + 1
+                return
             if attempt_capture(self.en.mon, ball_bonus=1.2):
                 messagebox.showinfo("Capture", f"Gotcha! {self.en.mon.spec.name} was captured!")
                 self.player.party.append(self.en.mon)
@@ -873,6 +1011,14 @@ class IconViewer(tk.Toplevel):
 class Combatant:
     mon: Monster
     current_hp: int
+
+@dataclass
+class Trainer:
+    x: int
+    y: int
+    facing: str = "S"         # "N","S","E","W"
+    defeated: bool = False
+    party: List[Monster] = field(default_factory=list)
 
 @dataclass
 class Player:

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.2] - 2025-08-11
+### Added
+- Map redo
+- 2 new monsters
+- Trainer Battles
+
 ## [1.0.1] - 2025-08-11
 ### Added
 - Shop window
