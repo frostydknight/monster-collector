@@ -6,6 +6,7 @@
 - 2 new monsters
 - Trainer Battles
 - Tile Manager
+- Redo of the Party Menu
 
 ## [1.0.1] - 2025-08-11
 ### Added

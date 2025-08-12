@@ -1,0 +1,14 @@
+{
+  "symbols": {
+    "H": "../assets/tiles/hut.png",
+    "C": "../assets/tiles/shop.png",
+    "T": "../assets/tiles/tall_grass.png",
+    ".": "../assets/tiles/plain.png",
+    "#": "../assets/tiles/tree.png",
+    " ": "../assets/tiles/water.png"
+  },
+  "overlays": [
+    { "x": 7, "y": 1, "icon": "../assets/tiles/sign.png" },
+    { "x": 14, "y": 6, "icon": "../assets/tiles/tree.png" }
+  ]
+}
