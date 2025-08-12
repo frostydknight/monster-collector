@@ -3,11 +3,10 @@ import random
 from typing import List, Tuple
 import tkinter as tk
 from tkinter import messagebox
-from PIL import Image, ImageTk
 
 from models.monster import Monster
 from models.player import Player
-from models.constants import WORLD_MAP, ASSETS_DIR, TILE, TILE_ICONS_JSON, CANVAS_W, CANVAS_H, MAP_W, MAP_H, SIDEBAR_W, SIDEBAR_H
+from models.constants import WORLD_MAP, ASSETS_DIR, TILE, TILE_ICONS_JSON, CANVAS_W, CANVAS_H
 from models.trainer import Trainer, create_trainers, tile_in_front_of_trainer, check_trainer_engagement, on_trainer_defeated
 from battle.dialogs import BagDialog
 from ui.sidebar import Sidebar
@@ -48,27 +47,16 @@ class GameApp(tk.Tk):
         self.trainers: List[Trainer] = create_trainers()
 
         # Overworld UI
-        # Load map background image
-        map_bg_path = os.path.join(ASSETS_DIR, "ui", "map_bg.png")
-        if os.path.exists(map_bg_path):
-            pil_img = Image.open(map_bg_path).resize((MAP_W, MAP_H))
-            self.map_bg_image = ImageTk.PhotoImage(pil_img)
-            self.map_bg_label = tk.Label(self, image=self.map_bg_image, borderwidth=0, highlightthickness=0)
-            self.map_bg_label.place(x=0, y=0, width=MAP_W, height=MAP_H)
-            self.map_bg_label.lower()
+        self.map_canvas = tk.Canvas(self, width=CANVAS_W, height=CANVAS_H, bg="#1a1a1a", highlightthickness=0)
+        self.map_canvas.grid(row=0, column=0, padx=8, pady=8)
 
-        # Place the map canvas above the background image
-        self.map_canvas = tk.Canvas(self, width=MAP_W, height=MAP_H, highlightthickness=0, borderwidth=0, bg='#000000')
-        self.map_canvas.place(x=0, y=0, width=MAP_W, height=MAP_H)
-
-        self.sidebar = Sidebar(self, width=SIDEBAR_W, height=SIDEBAR_H)
-        self.sidebar.place(x=MAP_W, y=0, width=SIDEBAR_W, height=SIDEBAR_H)
+        self.sidebar = Sidebar(self)
+        self.sidebar.grid(row=0, column=1, sticky="ns", padx=(0,8), pady=8)
 
         # Tile icons
         os.makedirs(os.path.join(ASSETS_DIR, "tiles"), exist_ok=True)
         self.tile_icons = TileIconManager(TILE)
         self.tile_icons.load_from_json(TILE_ICONS_JSON)
-
 
         self.bind_all("<Key>", self.on_key)
         self.redraw_map()
