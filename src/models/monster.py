@@ -20,6 +20,9 @@ class MonsterSpec:
     catch_rate: int
     icon: Optional[str] = None
     learnset: List[Move] = field(default_factory=list)
+    evolves_to: Optional[str] = None
+    evolution_level: Optional[int] = None
+    evolution_requirements: Optional[dict] = None
 
 @dataclass
 class Monster:
@@ -60,6 +63,21 @@ class Monster:
             logs.append(f"{self.spec.name} leveled up to {self.level}!")
         return logs
     
+    def can_evolve(self):
+        """Check if the monster can evolve based on its spec."""
+        return (
+            self.spec.evolves_to is not None and
+            self.level >= (self.spec.evolution_level or 1000)
+        )
+
+    def evolve(self, monster_db):
+        if self.can_evolve():
+            new_spec = monster_db[self.spec.evolves_to]
+            self.spec = new_spec
+            # Update moves to the new monster's learnset
+            self.moves = [Move(m.name, m.power, m.accuracy) for m in new_spec.learnset]
+            # Reset HP to new max
+            self.current_hp = self.max_hp
 
 @dataclass
 class Combatant:

@@ -225,6 +225,13 @@ class BattleWindow(tk.Toplevel):
     def check_outcome(self):
         if self.en.current_hp <= 0:
             logs = self.pl.mon.gain_exp(12 + self.en.mon.level * 3)
+            # Evolution check after gaining EXP and possibly leveling up
+            from data.loader import load_monster_db
+            monster_db = load_monster_db()
+            if self.pl.mon.can_evolve():
+                old_name = self.pl.mon.spec.name
+                self.pl.mon.evolve(monster_db)
+                logs.append(f"{old_name} evolved into {self.pl.mon.spec.name}!")
             if self.is_trainer and self.en_index + 1 < len(self.enemy_party_state):
                 self.en_index += 1
                 self.en = self.enemy_party_state[self.en_index]
