@@ -100,5 +100,8 @@ def load_monster_db() -> dict:
             catch_rate=int(d.get("catch_rate", 100)),
             icon=d.get("icon"),
             learnset=learnset,
+            evolves_to=d.get("evolves_to"),
+            evolution_level = int(d["evolution_level"]) if str(d.get("evolution_level", "")).isdigit() else None,
+            evolution_requirements=d.get("evolution_requirements", {}),
         )
     return specs
