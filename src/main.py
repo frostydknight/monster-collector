@@ -15,6 +15,7 @@ import tkinter as tk
 def main():
     try:
         app = GameApp()
+        app.protocol("WM_DELETE_WINDOW", app.on_closing)
         app.mainloop()
     except tk.TclError as e:
         print("Tkinter error:", e)

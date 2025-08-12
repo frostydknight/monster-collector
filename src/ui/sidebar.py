@@ -1,37 +1,50 @@
 import tkinter as tk
 from tkinter import ttk
+from PIL import Image, ImageTk
 from battle.dialogs import BagDialog
 from ui.party import PartyDialog
 from ui.catalog import CatalogDialog
+import os
 
 class Sidebar(tk.Frame):
-    def __init__(self, master):
-        super().__init__(master)
-        self.configure(borderwidth=0)
-        self.money_var = tk.StringVar()
-        self.active_var = tk.StringVar()
-        tk.Label(self, text="Status", font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
-        tk.Label(self, textvariable=self.money_var).pack(anchor="w")
-        tk.Label(self, textvariable=self.active_var, justify="left").pack(anchor="w", pady=(0,6))
+    def __init__(self, master, width=224, height=1024, **kwargs):
+        super().__init__(master, width=width, height=height, **kwargs)
+        self.configure(borderwidth=0, highlightthickness=0)
+        self.pack_propagate(False)
 
-        btnrow = tk.Frame(self)
-        btnrow.pack(fill="x", pady=(4,6))
-        ttk.Button(btnrow, text="Bag (I)", command=self.open_bag).pack(side="left", expand=True, fill="x")
-        ttk.Button(btnrow, text="Party (P)", command=self.open_party).pack(side="left", expand=True, fill="x")
-        ttk.Button(btnrow, text="Catalog (C)", command=self.open_catalog).pack(side="left", expand=True, fill="x")
+        # Load sidebar background image
+        sidebar_bg_path = os.path.join(os.path.dirname(__file__), '../assets/ui/sidebar_bg.png')
+        sidebar_bg_path = os.path.abspath(sidebar_bg_path)
+        if os.path.exists(sidebar_bg_path):
+            pil_img = Image.open(sidebar_bg_path).resize((width, height))
+            self.bg_image = ImageTk.PhotoImage(pil_img)
+            self.bg_label = tk.Label(self, image=self.bg_image, borderwidth=0)
+            self.bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+            self.bg_label.lower()
 
+        # Place tips label near the bottom
         tips = ("Move: WASD/Arrows\n"
                 "Tall grass = more encounters\n"
                 "H = heal, C = shop")
-        tk.Label(self, text=tips, fg="#aaa").pack(anchor="w")
+        self.tips_label = tk.Label(self, text=tips, fg="#888", font=("TkDefaultFont", 12), borderwidth=0, highlightthickness=0)
+        self.tips_label.place(x=10, y=height-160, width=width-20, height=60)
+
+        # Place buttons above the tips
+        btn_y_start = height-90
+        btn_height = 40
+        btn_spacing = 8
+        btn_width = width-24
+        self.bag_btn = ttk.Button(self, text="Bag (I)", command=self.open_bag)
+        self.bag_btn.place(x=12, y=btn_y_start, width=btn_width, height=btn_height)
+        self.party_btn = ttk.Button(self, text="Party (P)", command=self.open_party)
+        self.party_btn.place(x=12, y=btn_y_start+btn_height+btn_spacing, width=btn_width, height=btn_height)
+        self.catalog_btn = ttk.Button(self, text="Catalog (C)", command=self.open_catalog)
+        self.catalog_btn.place(x=12, y=btn_y_start+2*(btn_height+btn_spacing), width=btn_width, height=btn_height)
+        self.quit_btn = ttk.Button(self, text="Quit", command=self.quit_game)
+        self.quit_btn.place(x=12, y=btn_y_start+3*(btn_height+btn_spacing), width=btn_width, height=btn_height)
 
     def refresh(self, player):
-        self.money_var.set(f"Money: {player.money} — Bag: " + ", ".join(f"{k}x{v}" for k,v in player.bag.items()))
-        if player.active():
-            a = player.active()
-            self.active_var.set(f"Active: {a.spec.name} Lv{a.level} [{a.spec.element}]\nHP {a.max_hp}")
-        else:
-            self.active_var.set("No active monster.")
+        pass
 
     def open_bag(self):
         if hasattr(self.master, 'open_bag'):
@@ -53,3 +66,9 @@ class Sidebar(tk.Frame):
     
     def update_sidebar(self):
         self.master.update_sidebar()
+
+    def quit_game(self):
+        if hasattr(self.master, 'on_closing'):
+            self.master.on_closing()
+        else:
+            self.master.destroy()
