@@ -5,33 +5,31 @@ from ui.party import PartyDialog
 from ui.catalog import CatalogDialog
 
 class Sidebar(tk.Frame):
-    def __init__(self, master):
-        super().__init__(master)
+    def __init__(self, master, width=224, height=1024, **kwargs):
+        super().__init__(master, width=width, height=height, **kwargs)
         self.configure(borderwidth=0)
-        self.money_var = tk.StringVar()
-        self.active_var = tk.StringVar()
-        tk.Label(self, text="Status", font=("TkDefaultFont", 10, "bold")).pack(anchor="w")
-        tk.Label(self, textvariable=self.money_var).pack(anchor="w")
-        tk.Label(self, textvariable=self.active_var, justify="left").pack(anchor="w", pady=(0,6))
+        self.pack_propagate(False)
 
-        btnrow = tk.Frame(self)
-        btnrow.pack(fill="x", pady=(4,6))
-        ttk.Button(btnrow, text="Bag (I)", command=self.open_bag).pack(side="left", expand=True, fill="x")
-        ttk.Button(btnrow, text="Party (P)", command=self.open_party).pack(side="left", expand=True, fill="x")
-        ttk.Button(btnrow, text="Catalog (C)", command=self.open_catalog).pack(side="left", expand=True, fill="x")
+        # Spacer to push buttons and tips to the bottom
+        tk.Frame(self).pack(fill="both", expand=True)
 
+        # Button column (bottom, above tips)
+        btncol = tk.Frame(self)
+        btncol.pack(side="bottom", anchor="s", pady=(0, 24), fill="x")
+        btn_style = {"ipadx": 8, "ipady": 8, "padx": 0, "pady": 4, "fill": "x"}
+        ttk.Button(btncol, text="Bag (I)", command=self.open_bag).pack(**btn_style)
+        ttk.Button(btncol, text="Party (P)", command=self.open_party).pack(**btn_style)
+        ttk.Button(btncol, text="Catalog (C)", command=self.open_catalog).pack(**btn_style)
+        ttk.Button(btncol, text="Quit", command=self.quit_game).pack(**btn_style)
+
+        # Tips section (bottom)
         tips = ("Move: WASD/Arrows\n"
                 "Tall grass = more encounters\n"
                 "H = heal, C = shop")
-        tk.Label(self, text=tips, fg="#aaa").pack(anchor="w")
+        tk.Label(self, text=tips, fg="#888", font=("TkDefaultFont", 12)).pack(side="bottom", anchor="s", pady=(0, 16))
 
     def refresh(self, player):
-        self.money_var.set(f"Money: {player.money} — Bag: " + ", ".join(f"{k}x{v}" for k,v in player.bag.items()))
-        if player.active():
-            a = player.active()
-            self.active_var.set(f"Active: {a.spec.name} Lv{a.level} [{a.spec.element}]\nHP {a.max_hp}")
-        else:
-            self.active_var.set("No active monster.")
+        pass
 
     def open_bag(self):
         if hasattr(self.master, 'open_bag'):
@@ -53,3 +51,9 @@ class Sidebar(tk.Frame):
     
     def update_sidebar(self):
         self.master.update_sidebar()
+
+    def quit_game(self):
+        if hasattr(self.master, 'on_closing'):
+            self.master.on_closing()
+        else:
+            self.master.destroy()

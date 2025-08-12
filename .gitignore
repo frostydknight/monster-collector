@@ -67,3 +67,4 @@ assets/
 # Ignore assets and data generated in src/
 src/assets/
 src/data/*.json
+src/data/saves/*.json

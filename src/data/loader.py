@@ -1,7 +1,9 @@
 import os
 import json
 from models.monster import Move, MonsterSpec
-from models.constants import ASSETS_DIR, MONSTER_JSON
+from models.constants import ASSETS_DIR, MONSTER_JSON, SAVE_DIR
+from models.player import Player
+from models.monster import Monster
 
 DEFAULT_MONSTERS = {
     "slime_girl": {
@@ -105,3 +107,42 @@ def load_monster_db() -> dict:
             evolution_requirements=d.get("evolution_requirements", {}),
         )
     return specs
+
+def save_profile(profile, player):
+    profile['data'] = player_to_dict(player)
+    name = profile['name']
+    save_path = os.path.join(SAVE_DIR, f"{name}.json")
+    with open(save_path, 'w') as f:
+        json.dump(profile, f)
+
+def load_player_from_profile(profile):
+    data = profile.get('data', {})
+    specs = load_monster_db()
+    player = Player()
+    player.x = data.get('x', 1)
+    player.y = data.get('y', 1)
+    player.money = data.get('money', 200)
+    player.bag = data.get('bag', {"Charm Orb": 3, "Potion": 2})
+    party = []
+    for m in data.get('party', []):
+        spec = specs.get(m['spec_key'])
+        if spec:
+            mon = Monster(spec, level=m.get('level', 3), exp=m.get('exp', 0))
+            party.append(mon)
+    player.party = party
+    return player
+
+def player_to_dict(player):
+    return {
+        'x': player.x,
+        'y': player.y,
+        'money': player.money,
+        'bag': player.bag,
+        'party': [
+            {
+                'spec_key': mon.spec.key,
+                'level': mon.level,
+                'exp': mon.exp
+            } for mon in player.party
+        ]
+    }

@@ -14,12 +14,21 @@ from ui.catalog import CatalogDialog
 from ui.shop import ShopDialog
 from ui.party import PartyDialog
 from core.map_manager import TileIconManager, redraw_map, tile_at
-from data.loader import load_monster_db
+from data.loader import load_monster_db, load_player_from_profile, save_profile
 from battle.manager import BattleManager
+from ui.main_menu.main_menu import MainMenu
 
 class GameApp(tk.Tk):
     def __init__(self):
         super().__init__()
+        self.withdraw()  # Hide main window until profile is loaded
+        self.profile = None
+        self.menu = MainMenu(self, self.on_profile_loaded)
+        self.wait_window(self.menu)
+        if not self.profile:
+            self.destroy()
+            return
+        self.deiconify()  # Show main window
         self.title("Monster Collector — Tkinter Edition")
         self.resizable(False, False)
         os.makedirs(os.path.join(ASSETS_DIR, "monsters"), exist_ok=True)
@@ -28,10 +37,14 @@ class GameApp(tk.Tk):
 
         # Game state
         self.specs = load_monster_db()
-        self.player = Player()
+        # Load player from profile or create new
+        if self.profile.get('data'):
+            self.player = load_player_from_profile(self.profile)
+        else:
+            self.player = Player()
+            starter_key = random.choice(list(self.specs.keys()))
+            self.player.party.append(Monster(self.specs[starter_key], level=3))
         self.trainers: List[Trainer] = create_trainers()
-        starter_key = random.choice(list(self.specs.keys()))
-        self.player.party.append(Monster(self.specs[starter_key], level=3))
 
         # Overworld UI
         self.map_canvas = tk.Canvas(self, width=CANVAS_W, height=CANVAS_H, bg="#1a1a1a", highlightthickness=0)
@@ -121,3 +134,14 @@ class GameApp(tk.Tk):
 
     def on_trainer_defeated(self, trainer: Trainer):
         on_trainer_defeated(self, trainer)
+
+    def on_profile_loaded(self, profile):
+        self.profile = profile
+
+    def save_game(self):
+        if self.profile:
+            save_profile(self.profile, self.player)
+
+    def on_closing(self):
+        self.save_game()
+        self.destroy()

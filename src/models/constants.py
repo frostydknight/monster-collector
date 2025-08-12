@@ -39,3 +39,13 @@ ELEMENT_COLORS = {
     "Earth": "#a0723a",
     "Air":   "#87d37c",
 }
+
+SAVE_DIR = os.path.join(SRC_ROOT, "data", "saves")
+
+# New UI dimensions for 1024x1024 background
+MAIN_W = 1024
+MAIN_H = 1024
+SIDEBAR_W = 224
+SIDEBAR_H = MAIN_H
+MAP_W = MAIN_W - SIDEBAR_W  # 800
+MAP_H = MAIN_H

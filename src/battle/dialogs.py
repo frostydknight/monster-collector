@@ -51,6 +51,8 @@ class BagDialog(tk.Toplevel):
         self.resizable(False, False)
         self.player = player
         frm = tk.Frame(self); frm.pack(padx=10, pady=10)
+        # Show money at the top
+        tk.Label(frm, text=f"Money: {player.money}", font=("TkDefaultFont", 12, "bold")).pack(anchor="w", pady=(0,8))
         for item, qty in player.bag.items():
             tk.Label(frm, text=f"{item}: x{qty}").pack(anchor="w")
         ttk.Button(frm, text="Close", command=self.destroy).pack(pady=(8,0))
