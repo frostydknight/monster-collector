@@ -1078,6 +1078,9 @@ class PartyDialog(tk.Toplevel):
         style.configure("HP.Horizontal.TProgressbar",  troughcolor="#29323d", background="#45c36f")
         style.configure("EXP.Horizontal.TProgressbar", troughcolor="#29323d", background="#4aa1ff")
 
+        style.configure("HP.Horizontal.TProgressbar",  troughcolor="#242a33", background="#45c36f")
+        style.configure("EXP.Horizontal.TProgressbar", troughcolor="#242a33", background="#4aa1ff")
+
     def select(self, idx: int):
         self.selected = idx
         self.refresh()
@@ -1096,6 +1099,7 @@ class PartyDialog(tk.Toplevel):
     def refresh(self):
         # Rebuild each slot
         for i, f in enumerate(self.slot_frames):
+            # wipe the existing contents
             for w in f.winfo_children():
                 w.destroy()
 
@@ -1104,7 +1108,8 @@ class PartyDialog(tk.Toplevel):
             # Highlight selected slot
             is_sel = (i == self.selected)
             f.configure(bg=("#242a33" if is_sel else self.cget("bg")))
-            inner = tk.Frame(f, bg=("#242a33" if is_sel else f.cget("bg")))
+
+            inner = tk.Frame(f, bg=("#242a33" if is_sel else f.cget("bg")), highlightthickness=0)
             inner.pack(fill="x")
 
             # Icon
@@ -1115,55 +1120,51 @@ class PartyDialog(tk.Toplevel):
             icon_lbl.grid(row=0, column=0, rowspan=3, sticky="w", padx=(0, 8))
             icon_lbl.bind("<Button-1>", lambda e, idx=i: self.select(idx))
 
-            # Data area (name/level, HP, EXP)
             if mon:
-                # Name / Level line
+                # Name / Level
                 name = f"{mon.spec.name}   Lv{mon.level}"
                 name_fg = ELEMENT_COLORS.get(getattr(mon.spec, "element", ""), None)
-                lbl = ttk.Label(inner, text=name, style="PartyName.TLabel")
-                lbl.grid(row=0, column=1, sticky="w")
+                name_lbl = tk.Label(inner, text=name, bg=inner.cget("bg"),
+                                    font=("TkDefaultFont", 11, "bold"), anchor="w")
                 if name_fg:
-                    # ttk labels don’t accept 'foreground' via grid, set option directly
-                    try:
-                        lbl.configure(foreground=name_fg)
-                    except tk.TclError:
-                        pass
+                    name_lbl.configure(foreground=name_fg)
+                name_lbl.grid(row=0, column=1, sticky="w")
 
-                # HP — we show max out of battle (you can wire current HP if you track it)
+                # HP (use current if you track it; here we show max)
                 cur_hp = mon.max_hp
                 max_hp = mon.max_hp
                 hp_pct = int((cur_hp / max_hp) * 100) if max_hp > 0 else 0
 
-                hp_row = tk.Frame(inner, bg=inner.cget("bg"))
+                hp_row = tk.Frame(inner, bg=inner.cget("bg"), highlightthickness=0)
                 hp_row.grid(row=1, column=1, sticky="we", pady=(2, 0))
-                ttk.Label(hp_row, text=f"HP: {cur_hp}/{max_hp}", style="PartySub.TLabel").pack(anchor="w")
-                hp_bar = ttk.Progressbar(hp_row, style="HP.Horizontal.TProgressbar",
-                                        orient="horizontal", length=160, mode="determinate", maximum=100, value=hp_pct)
-                hp_bar.pack(anchor="w")
+                tk.Label(hp_row, text=f"HP: {cur_hp}/{max_hp}", bg=inner.cget("bg")).pack(anchor="w")
+                ttk.Progressbar(hp_row, style="HP.Horizontal.TProgressbar",
+                                orient="horizontal", length=160, mode="determinate",
+                                maximum=100, value=hp_pct).pack(anchor="w")
 
                 # EXP
                 exp_now = mon.exp
                 exp_next = mon.exp_to_next()
                 exp_pct = int((exp_now / exp_next) * 100) if exp_next > 0 else 0
 
-                exp_row = tk.Frame(inner, bg=inner.cget("bg"))
+                exp_row = tk.Frame(inner, bg=inner.cget("bg"), highlightthickness=0)
                 exp_row.grid(row=2, column=1, sticky="we", pady=(2, 0))
-                ttk.Label(exp_row, text=f"EXP: {exp_now}/{exp_next}", style="PartySubDim.TLabel").pack(anchor="w")
-                exp_bar = ttk.Progressbar(exp_row, style="EXP.Horizontal.TProgressbar",
-                                        orient="horizontal", length=160, mode="determinate", maximum=100, value=exp_pct)
-                exp_bar.pack(anchor="w")
-
+                tk.Label(exp_row, text=f"EXP: {exp_now}/{exp_next}", bg=inner.cget("bg"), fg="#7a8aa0").pack(anchor="w")
+                ttk.Progressbar(exp_row, style="EXP.Horizontal.TProgressbar",
+                                orient="horizontal", length=160, mode="determinate",
+                                maximum=100, value=exp_pct).pack(anchor="w")
             else:
-                # Empty slot styling
-                ttk.Label(inner, text="— empty —", style="PartySubDim.TLabel").grid(row=0, column=1, sticky="w")
-                ttk.Label(inner, text="HP: —", style="PartySubDim.TLabel").grid(row=1, column=1, sticky="w")
-                ttk.Label(inner, text="EXP: —", style="PartySubDim.TLabel").grid(row=2, column=1, sticky="w")
+                # Empty slot styling (tk.Label with matching bg)
+                tk.Label(inner, text="— empty —", bg=inner.cget("bg"), fg="#7a8aa0").grid(row=0, column=1, sticky="w")
+                tk.Label(inner, text="HP: —",      bg=inner.cget("bg"), fg="#7a8aa0").grid(row=1, column=1, sticky="w")
+                tk.Label(inner, text="EXP: —",     bg=inner.cget("bg"), fg="#7a8aa0").grid(row=2, column=1, sticky="w")
 
         # Disable actions if empty selection or empty slot
         have_mon = self.selected < len(self.player.party)
         self.btn_make_lead.configure(state=("normal" if have_mon and self.selected != 0 else "disabled"))
         self.btn_view_icon.configure(state=("normal" if have_mon else "disabled"))
         self.btn_release.configure(state=("normal" if have_mon else "disabled"))
+
 
     def selected_index(self) -> Optional[int]:
         return self.selected if self.selected < len(self.player.party) else None
